@@ -23,7 +23,8 @@ import { createDocument } from '@/lib/ai/tools/create-document';
 import { updateDocument } from '@/lib/ai/tools/update-document';
 import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
-import { summarizeUrl } from '@/lib/ai/tools/summarize-url'; // Import the new tool
+import { summarizeUrl } from '@/lib/ai/tools/summarize-url';
+import { translateTextTool } from '@/lib/ai/tools/translate-text'; // Import the new translate tool
 import { isProductionEnvironment } from '@/lib/constants';
 import { myProvider } from '@/lib/ai/providers';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
@@ -73,7 +74,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { id, message, selectedChatModel, selectedVisibilityType } =
+    // Destructure selectedLanguage from requestBody
+    const { id, message, selectedChatModel, selectedVisibilityType, selectedLanguage } =
       requestBody;
 
     const session = await auth();
@@ -160,7 +162,8 @@ export async function POST(request: Request) {
                   'createDocument',
                   'updateDocument',
                   'requestSuggestions',
-                  'summarizeUrl', // Add tool name to the list
+                  'summarizeUrl',
+                  'translateText', // Add new tool name to the list
                 ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
@@ -172,7 +175,8 @@ export async function POST(request: Request) {
               session,
               dataStream,
             }),
-            summarizeUrl, // Add the tool itself to the object
+            summarizeUrl,
+            translateText: translateTextTool, // Add the new tool itself to the object
           },
           onFinish: async ({ response }) => {
             if (session.user?.id) {
@@ -192,21 +196,55 @@ export async function POST(request: Request) {
                   responseMessages: response.messages,
                 });
 
+                // Perform translation if needed
+                if (selectedLanguage && selectedLanguage !== 'en' && assistantMessage.role === 'assistant') {
+                  const textPart = assistantMessage.parts.find(part => part.type === 'text');
+                  if (textPart && textPart.type === 'text' && textPart.text) {
+                    const originalText = textPart.text;
+                    try {
+                      const translationResult = await translateTextTool.execute({
+                        text: originalText,
+                        targetLanguage: selectedLanguage,
+                      });
+
+                      if (translationResult.translatedText) {
+                        textPart.text = translationResult.translatedText; // Update part text to translated
+                        // Add custom fields to the message for the UI
+                        (assistantMessage as any).originalText = originalText;
+                        (assistantMessage as any).targetLanguage = selectedLanguage;
+                      } else if (translationResult.error) {
+                        (assistantMessage as any).translationError = translationResult.error;
+                        (assistantMessage as any).targetLanguage = selectedLanguage;
+                         // Optionally, notify user that original text is shown due to translation error
+                      }
+                    } catch (e) {
+                      console.error('Translation tool execution error:', e);
+                      (assistantMessage as any).translationError = 'Translation tool failed unexpectedly.';
+                      (assistantMessage as any).targetLanguage = selectedLanguage;
+                    }
+                  }
+                }
+
                 await saveMessages({
                   messages: [
                     {
                       id: assistantId,
                       chatId: id,
                       role: assistantMessage.role,
-                      parts: assistantMessage.parts,
+                      parts: assistantMessage.parts, // These parts may now contain translated text
+                      // Add custom fields to the DB schema if you want to persist them
+                      // For now, they are transient for the client if not saved to DB
+                      originalText: (assistantMessage as any).originalText,
+                      targetLanguage: (assistantMessage as any).targetLanguage,
+                      translationError: (assistantMessage as any).translationError,
                       attachments:
                         assistantMessage.experimental_attachments ?? [],
                       createdAt: new Date(),
                     },
                   ],
                 });
-              } catch (_) {
-                console.error('Failed to save chat');
+              } catch (e) {
+                console.error('Failed to save chat or translate:', e);
               }
             }
           },

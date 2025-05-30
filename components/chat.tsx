@@ -19,6 +19,7 @@ import type { Session } from 'next-auth';
 import { useSearchParams } from 'next/navigation';
 import { useChatVisibility } from '@/hooks/use-chat-visibility';
 import { useAutoResume } from '@/hooks/use-auto-resume';
+import { useLanguage } from '@/contexts/language-context'; // Import useLanguage
 import { ChatSDKError } from '@/lib/errors';
 
 export function Chat({
@@ -44,6 +45,7 @@ export function Chat({
     chatId: id,
     initialVisibilityType,
   });
+  const { selectedLanguage } = useLanguage(); // Get selectedLanguage from context
 
   const {
     messages,
@@ -69,6 +71,7 @@ export function Chat({
       message: body.messages.at(-1),
       selectedChatModel: initialChatModel,
       selectedVisibilityType: visibilityType,
+      selectedLanguage: selectedLanguage, // Add selectedLanguage to the request body
     }),
     onFinish: () => {
       mutate(unstable_serialize(getChatHistoryPaginationKey));

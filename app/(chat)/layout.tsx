@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 
 import { AppSidebar } from '@/components/app-sidebar';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { LanguageProvider } from '@/contexts/language-context'; // Import LanguageProvider
 import { auth } from '../(auth)/auth';
 import Script from 'next/script';
 
@@ -22,8 +23,10 @@ export default async function Layout({
         strategy="beforeInteractive"
       />
       <SidebarProvider defaultOpen={!isCollapsed}>
-        <AppSidebar user={session?.user} />
-        <SidebarInset>{children}</SidebarInset>
+        <LanguageProvider> {/* Wrap with LanguageProvider */}
+          <AppSidebar user={session?.user} />
+          <SidebarInset>{children}</SidebarInset>
+        </LanguageProvider>
       </SidebarProvider>
     </>
   );

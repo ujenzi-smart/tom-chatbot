@@ -7,6 +7,14 @@ import { useWindowSize } from 'usehooks-ts';
 import { ModelSelector } from '@/components/model-selector';
 import { SidebarToggle } from '@/components/sidebar-toggle';
 import { Button } from '@/components/ui/button';
+import { useLanguage } from '@/contexts/language-context'; // Import useLanguage
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'; // Import Select components
 import { PlusIcon, VercelIcon } from './icons';
 import { useSidebar } from './ui/sidebar';
 import { memo } from 'react';
@@ -71,6 +79,11 @@ function PureChatHeader({
         />
       )}
 
+      {/* Language Selector Dropdown */}
+      <div className="order-1 md:order-4 ml-2"> {/* Adjusted order and added margin */}
+        <LanguageSelector />
+      </div>
+
       <Button
         className="bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 text-zinc-50 dark:text-zinc-900 hidden md:flex py-1.5 px-2 h-fit md:h-[34px] order-4 md:ml-auto"
         asChild
@@ -88,5 +101,29 @@ function PureChatHeader({
 }
 
 export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
-  return prevProps.selectedModelId === nextProps.selectedModelId;
+  // Add other props to comparison if they affect re-rendering, though language is context-based
+  return prevProps.selectedModelId === nextProps.selectedModelId &&
+         prevProps.chatId === nextProps.chatId &&
+         prevProps.selectedVisibilityType === nextProps.selectedVisibilityType &&
+         prevProps.isReadonly === nextProps.isReadonly;
 });
+
+// New LanguageSelector component
+function LanguageSelector() {
+  const { selectedLanguage, setSelectedLanguage, availableLanguages } = useLanguage();
+
+  return (
+    <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+      <SelectTrigger className="w-auto md:w-[120px] h-fit md:h-[34px] text-xs md:text-sm px-2 py-1 md:px-3 md:py-2">
+        <SelectValue placeholder="Language" />
+      </SelectTrigger>
+      <SelectContent>
+        {availableLanguages.map((lang) => (
+          <SelectItem key={lang.code} value={lang.code}>
+            {lang.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
