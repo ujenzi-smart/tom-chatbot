@@ -126,12 +126,27 @@ const PurePreviewMessage = ({
 
                       <div
                         data-testid="message-content"
-                        className={cn('flex flex-col gap-4', {
+                        className={cn('flex flex-col gap-1', { // Adjusted gap for translation info
                           'bg-primary text-primary-foreground px-3 py-2 rounded-xl':
                             message.role === 'user',
                         })}
                       >
                         <Markdown>{sanitizeText(part.text)}</Markdown>
+                        {/* Display translation information for assistant messages */}
+                        {message.role === 'assistant' && (message as any).targetLanguage && (
+                          <div className="text-xs text-muted-foreground italic mt-1">
+                            {(message as any).translationError ? (
+                              <span className="text-red-500">
+                                Translation to {(message as any).targetLanguage} failed: {(message as any).translationError}
+                              </span>
+                            ) : (message as any).originalText ? (
+                              <span>
+                                Translated from English to {(message as any).targetLanguage}.
+                                {/* TODO: Add "View original" functionality later */}
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
