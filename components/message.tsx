@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { MessageEditor } from './message-editor';
 import { DocumentPreview } from './document-preview';
 import { MessageReasoning } from './message-reasoning';
+import { SummarizeUrlDisplay } from './summarize-url-display'; // Import the new component
 import type { UseChatHelpers } from '@ai-sdk/react';
 
 const PurePreviewMessage = ({
@@ -183,13 +184,17 @@ const PurePreviewMessage = ({
                           args={args}
                           isReadonly={isReadonly}
                         />
+                      ) : toolName === 'summarizeUrl' ? (
+                        <div className="text-sm text-muted-foreground p-2">
+                          Summarizing URL: {args.url ? <a href={args.url as string} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">{args.url as string}</a> : 'a URL'}...
+                        </div>
                       ) : null}
                     </div>
                   );
                 }
 
                 if (state === 'result') {
-                  const { result } = toolInvocation;
+                  const { result, args: callArgs } = toolInvocation; // Ensure args are available for result
 
                   return (
                     <div key={toolCallId}>
@@ -212,6 +217,8 @@ const PurePreviewMessage = ({
                           result={result}
                           isReadonly={isReadonly}
                         />
+                      ) : toolName === 'summarizeUrl' ? (
+                        <SummarizeUrlDisplay args={callArgs as { url?: string }} result={result as { summary?: string; error?: string }} />
                       ) : (
                         <pre>{JSON.stringify(result, null, 2)}</pre>
                       )}

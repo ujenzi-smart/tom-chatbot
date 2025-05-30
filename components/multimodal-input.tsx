@@ -12,6 +12,7 @@ import {
   type SetStateAction,
   type ChangeEvent,
   memo,
+  useState, // Added for new state
 } from 'react';
 import { toast } from 'sonner';
 import { useLocalStorage, useWindowSize } from 'usehooks-ts';
@@ -59,6 +60,25 @@ function PureMultimodalInput({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
+  const [detectedUrl, setDetectedUrl] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false); // For loading/disabled state
+
+  // Simple URL validation regex (http/https)
+  const isValidHttpUrl = (string: string): string | null => {
+    let url;
+    try {
+      url = new URL(string);
+    } catch (_) {
+      return null;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    // Return the href to ensure it's a full URL, could also just return string
+    // Basic check to avoid matching something like "http://localhost" if not desired
+    if (!string.includes('.')) return null;
+    return url.href;
+  };
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -102,12 +122,48 @@ function PureMultimodalInput({
   }, [input, setLocalStorageInput]);
 
   const handleInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(event.target.value);
+    const value = event.target.value;
+    setInput(value);
+    setDetectedUrl(isValidHttpUrl(value.trim()));
     adjustHeight();
   };
 
+  // Effect to check input for URL on initial load or when input changes externally
+  useEffect(() => {
+    if (input) {
+      setDetectedUrl(isValidHttpUrl(input.trim()));
+    } else {
+      setDetectedUrl(null);
+    }
+  }, [input]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
+
+  const handleSummarizeUrl = useCallback(async () => {
+    if (!detectedUrl || status !== 'ready') return;
+
+    setIsSummarizing(true);
+    // Use a specific prompt format if needed, or rely on AI to understand "Summarize URL: ..."
+    // It's important that `summarizeUrl` tool is correctly registered in the backend AI handler
+    await append({
+      role: 'user',
+      content: `Summarize this URL: ${detectedUrl}`,
+    });
+    setInput(''); // Clear input after submitting
+    setDetectedUrl(null); // Reset detected URL
+    // setIsSummarizing will be set to false when the overall status changes,
+    // or we can tie it to the completion of the append promise if append gives such feedback.
+    // For now, let's assume status change will handle the end of summarization.
+    // Consider setting it to false more explicitly if status doesn't cover it well.
+    // For example, if append().then(...) or a finally block if append returns a promise that resolves upon completion.
+    // However, useChat's append usually triggers a status change ('loading', 'submitted', then 'ready')
+    setIsSummarizing(false); // Simplified for now, real status handling might be more complex
+    resetHeight();
+    if (width && width > 768) {
+      textareaRef.current?.focus();
+    }
+  }, [detectedUrl, append, setInput, status, width]);
 
   const submitForm = useCallback(() => {
     window.history.replaceState({}, '', `/chat/${chatId}`);
@@ -291,18 +347,25 @@ function PureMultimodalInput({
         }}
       />
 
-      <div className="absolute bottom-0 p-2 w-fit flex flex-row justify-start">
+      <div className="absolute bottom-0 p-2 w-fit flex flex-row justify-start items-center space-x-2">
         <AttachmentsButton fileInputRef={fileInputRef} status={status} />
+        {detectedUrl && (
+          <SummarizeUrlButton
+            onClick={handleSummarizeUrl}
+            disabled={isSummarizing || status !== 'ready' || !detectedUrl}
+          />
+        )}
       </div>
 
       <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
-        {status === 'submitted' ? (
+        {status === 'submitted' || isSummarizing ? ( // Consider isSummarizing for stop button too
           <StopButton stop={stop} setMessages={setMessages} />
         ) : (
           <SendButton
             input={input}
             submitForm={submitForm}
             uploadQueue={uploadQueue}
+            disabled={!!detectedUrl} // Optionally disable send if a URL is detected and summarize is available
           />
         )}
       </div>
@@ -313,15 +376,44 @@ function PureMultimodalInput({
 export const MultimodalInput = memo(
   PureMultimodalInput,
   (prevProps, nextProps) => {
+    // Add new state to comparison
     if (prevProps.input !== nextProps.input) return false;
     if (prevProps.status !== nextProps.status) return false;
     if (!equal(prevProps.attachments, nextProps.attachments)) return false;
     if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType)
       return false;
-
+    // It's tricky to compare detectedUrl and isSummarizing directly in memo if they are derived
+    // But since they are state within PureMultimodalInput, this component itself will re-render.
+    // The memo is for parent re-renders.
     return true;
   },
 );
+
+// New SummarizeUrlButton component
+function PureSummarizeUrlButton({
+  onClick,
+  disabled,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <Button
+      data-testid="summarize-url-button"
+      className="rounded-md p-[7px] h-fit text-xs" // Adjust styling as needed
+      onClick={(event) => {
+        event.preventDefault();
+        onClick();
+      }}
+      disabled={disabled}
+      variant="outline" // Or "ghost" or other appropriate variant
+      size="sm"
+    >
+      Summarize URL
+    </Button>
+  );
+}
+const SummarizeUrlButton = memo(PureSummarizeUrlButton);
 
 function PureAttachmentsButton({
   fileInputRef,
@@ -376,10 +468,12 @@ function PureSendButton({
   submitForm,
   input,
   uploadQueue,
+  disabled, // Added disabled prop
 }: {
   submitForm: () => void;
   input: string;
   uploadQueue: Array<string>;
+  disabled?: boolean; // Optional disabled prop
 }) {
   return (
     <Button
@@ -389,7 +483,7 @@ function PureSendButton({
         event.preventDefault();
         submitForm();
       }}
-      disabled={input.length === 0 || uploadQueue.length > 0}
+      disabled={disabled || input.length === 0 || uploadQueue.length > 0}
     >
       <ArrowUpIcon size={14} />
     </Button>
@@ -400,5 +494,6 @@ const SendButton = memo(PureSendButton, (prevProps, nextProps) => {
   if (prevProps.uploadQueue.length !== nextProps.uploadQueue.length)
     return false;
   if (prevProps.input !== nextProps.input) return false;
+  if (prevProps.disabled !== nextProps.disabled) return false;
   return true;
 });
